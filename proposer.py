@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from collections import namedtuple
+import time
 
 
 logging.basicConfig(level=logging.INFO)
@@ -69,30 +70,3 @@ async def proposer(shard_id, address, messages_out, smc):
             ))
             await messages_out.put(("newProposal", my_proposal))
         last_collation_header = current_collation_header
-
-
-async def collator(shard_id, messages_in, smc):
-    logger = logging.getLogger("collator")
-
-    while True:
-        period = smc.period
-        message = await messages_in.get()
-        if message[0] == "newProposal":
-            proposal = message[1]
-            logger.info("accepting proposal for period {} by proposer {}".format(
-                proposal.period,
-                proposal.proposer
-            ))
-            smc.collation_headers[shard_id].append(proposal)
-            smc.period += 1
-
-
-address = 0
-messages = asyncio.Queue()
-smc = SMC(1)
-
-
-loop = asyncio.get_event_loop()
-loop.create_task(collator(0, messages, smc))
-loop.create_task(proposer(0, address, messages, smc))
-loop.run_forever()
