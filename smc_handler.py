@@ -1,4 +1,7 @@
 import logging
+from itertools import (
+    product,
+)
 
 from eth_utils import (
     keccak,
@@ -12,49 +15,7 @@ from message import (
 
 logger = logging.getLogger("SMC")
 
-# loog_ahead_period_length = 5
-# windback_period_length = 25
-# collation_pool = [keccak(int_to_big_endian(i)) for i in range(20)]
 start_seed = keccak(b'\x00' * 32)
-
-
-# def get_look_ahead_period_length():
-#     return loog_ahead_period_length
-
-
-# def get_windback_period_length():
-#     return windback_period_length
-
-
-# def get_eligible_collator(period, shard_id):
-#     seed = start_seed
-#     for i in range(period):
-#         seed = keccak(seed + int_to_big_endian(i))
-
-#     collator_number = big_endian_to_int(keccak(seed + int_to_big_endian(shard_id))) % len(collation_pool)
-#     return (
-#         collator_number,
-#         collation_pool[collator_number],
-#     )
-
-
-# def get_collation_head(period, shard_id):
-#     _, collator_addr = get_eligible_collator(period, shard_id)
-#     _, prev_collation_addr = get_eligible_collator(period-1, shard_id)
-
-#     header = {
-#         "period": period,
-#         "shard_id": shard_id,
-#         "collator": collator_addr,
-#         "header_hash": keccak(collator_addr + int_to_big_endian(period) + int_to_big_endian(shard_id)),
-#         "parent_header_hash": keccak(prev_collation_addr + int_to_big_endian(period-1) + int_to_big_endian(shard_id)),
-#     }
-#     return header
-
-
-# def add_header(period, shard_id, collator_addr):
-#     _, eligible_collator_addr = get_eligible_collator(period, shard_id)
-#     assert collator_addr == eligible_collator_addr
 
 
 class SMCHandler:
@@ -65,6 +26,7 @@ class SMCHandler:
         self.collator_pool = collator_pool
 
         self.period = 1
+        self.collators = {}
         self.headers_per_shard = {
             shard_id: [create_genesis_header(shard_id)] for shard_id in range(self.num_shards)
         }  # {shard_id: header chain, ...}
@@ -84,18 +46,19 @@ class SMCHandler:
         )
         return self.collator_pool[collator_number]
 
-    def get_eligible_periods(self, shard_id, collator):
-        if shard_id not in self.headers_per_shard.keys():
-            raise ValueError("No shard with ID {}".format(shard_id))
+    def get_eligible_periods(self, collator):
         if collator not in self.collator_pool:
             raise ValueError("Collator {} not in collator pool".format(collator))
 
-        periods = [
-            period
-            for period in range(self.period, self.period + self.lookahead_period_length + 1)
+        shards = self.headers_per_shard.keys()
+        periods = range(self.period, self.period + self.lookahead_period_length + 1)
+        shards_and_periods = [
+            (shard_id, period)
+            for shard_id, period in product(shards, periods)
             if collator == self.get_eligible_collator(period, shard_id)
         ]
-        return periods
+        logger.info('shards_and_periods: {}'.format(shards_and_periods))
+        return shards_and_periods
 
     def add_header(self, collator, header):
         if collator != self.get_eligible_collator(header.period, header.shard_id):
@@ -108,9 +71,12 @@ class SMCHandler:
             raise ValueError("Fork in header chain")
 
         self.headers_per_shard[header.shard_id].append(header)
+        self.collators[header.shard_id, header.period] = collator
         logger.info('[Added Header] {}, collator: {}'.format(header, collator))
+s
 
     def get_head(self, shard_id):
-
-        logger.info('in get_header, self.headers_per_shard: {}'.format(self.headers_per_shard))
+        logger.info('in get_header, self.headers_per_shard: {}'.format(
+            self.headers_per_shard)
+        )
         return self.headers_per_shard[shard_id][-1]

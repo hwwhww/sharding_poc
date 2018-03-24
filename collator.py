@@ -13,7 +13,7 @@ from main_chain import (
 logger = logging.getLogger("collator")
 
 
-async def collator(network, shard_id, address, smc):
+async def collator(network, address, smc):
     if address not in smc.collator_pool:
         raise ValueError("Collator pool in SMC does not contain the given address")
     collation_coros_and_periods = []  # [(coroutine, period), ...]
@@ -35,7 +35,7 @@ async def collator(network, shard_id, address, smc):
 
         # when a new period starts, check if we're eligible for some shard and if so start to
         # collate
-        for period in smc.get_eligible_periods(shard_id, address):
+        for (shard_id, period) in smc.get_eligible_periods(address):
             if period in [p for _, p in collation_coros_and_periods]:
                 continue  # collation coro already running
             logger.info("Detected eligibility of collator {} for period {} in shard {}".format(
