@@ -16,11 +16,12 @@ loop = asyncio.get_event_loop()
 
 asyncio.ensure_future(broadcast(Network))
 
-address = 0	
+address = 0
 
 smc = SMCHandler(1, 5, [0])
-loop.create_task(main_chain(smc))
+asyncio.ensure_future(main_chain(smc))
 
-loop.create_task(collator(Network, 0, address, smc))
-loop.create_task(proposer(Network, 0, address, smc))	
+asyncio.ensure_future(collator(Network, 0, address, smc))
+for i in range(1):
+    asyncio.ensure_future(proposer(Network, 0, i, smc))	
 loop.run_forever()

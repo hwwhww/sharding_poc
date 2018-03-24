@@ -22,7 +22,7 @@ async def collator(network, shard_id, address, smc):
     while True:
         # wait for next period
         while smc.period == last_period:
-            asyncio.sleep(PERIOD_TIME / 2)
+            await asyncio.sleep(PERIOD_TIME / 2)
         last_period = smc.period
 
         # remove finished coroutines
@@ -44,49 +44,34 @@ async def collator(network, shard_id, address, smc):
                 shard_id,
             ))
 
-            coro = await collate(network, shard_id, period, address, smc)
+            coro = asyncio.ensure_future(collate(network, shard_id, period, address, smc))
             collation_coros_and_periods.append((coro, period))
 
 
 async def collate(network, shard_id, period, address, smc):
-    logger.info('smc.period: {}, period: {}'.format(smc.period, period))
+    message_queue = asyncio.Queue()
+    network.outputs.append(message_queue)
+
     while smc.period < period:
-        await asyncio.sleep(PERIOD_TIME / 5)
+        await asyncio.sleep(PERIOD_TIME / 2)
+
+    proposals = []
+    while not message_queue.empty():
+        message = await message_queue.get()
+        if isinstance(message, CollationHeader):
+            logger.info('[P: {}] In the queue, current_period: {}, message: {}'.format(period, smc.period, message))
+            if message.shard_id == shard_id and message.period == period:
+                proposals.append(message)
 
     # overslept
     if smc.period != period:
         logger.warning("Missed submitting proposal".format(period))
         return
 
-    end_time = time.time() + PERIOD_TIME / 2
-
-    message_queue = asyncio.Queue()
-    network.outputs.append(message_queue)
-    proposals = await collect_proposals(network, shard_id, period, message_queue, end_time)
     network.outputs.remove(message_queue)
     if proposals:
-        smc.add_header(address, random.choice(proposals))
+        proposal = random.choice(proposals)
+        logger.info('[P: {}] proposals: {}, proposal: {}'.format(period, proposals, proposal))
+        smc.add_header(address, proposal)
     else:
-        logger.warning("No proposal collected")
-
-
-async def collect_proposals(network, shard_id, period, message_queue, end_time):
-    logger.info("Collecting proposals")
-    proposals = []
-    while True:
-        try:
-            coro = collect_proposal(shard_id, period, message_queue)
-            proposal = await asyncio.wait_for(coro, timeout=end_time - time.time())
-            proposals.append(proposal)
-        except asyncio.TimeoutError:
-            logger.info("Collected {} proposals".format(len(proposals)))
-            return proposals
-
-
-async def collect_proposal(shard_id, period, message_queue):
-    while True:
-        message = await message_queue.get()
-        logger.info('collecting proposal')
-        if isinstance(message, CollationHeader):
-            if message.shard_id == shard_id and message.period == period:
-                return message
+        logger.warning("[P: {}] No proposal collected".format(period))
