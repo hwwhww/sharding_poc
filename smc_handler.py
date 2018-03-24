@@ -73,7 +73,6 @@ class SMCHandler:
         self.headers_per_shard[header.shard_id].append(header)
         self.collators[header.shard_id, header.period] = collator
         logger.info('[Added Header] {}, collator: {}'.format(header, collator))
-s
 
     def get_head(self, shard_id):
         logger.info('in get_header, self.headers_per_shard: {}'.format(
