@@ -7,8 +7,9 @@ from message import (
     CollationHeader,
 )
 
-
-PERIOD_TIME = 75.
+from main_chain import (
+    PERIOD_TIME,
+)
 
 logger = logging.getLogger("collator")
 
@@ -85,4 +86,4 @@ async def collect_proposal(shard_id, period, message_queue):
         message = await message_queue.get()
         if isinstance(message, CollationHeader):
             if message.shard_id == shard_id and message.period == period:
-                return proposal
+                return message

@@ -27,7 +27,7 @@ start_seed = keccak(b'\x00' * 32)
 #     seed = start_seed
 #     for i in range(period):
 #         seed = keccak(seed + int_to_big_endian(i))
-    
+
 #     collator_number = big_endian_to_int(keccak(seed + int_to_big_endian(shard_id))) % len(collation_pool)
 #     return (
 #         collator_number,
@@ -52,7 +52,6 @@ start_seed = keccak(b'\x00' * 32)
 # def add_header(period, shard_id, collator_addr):
 #     _, eligible_collator_addr = get_eligible_collator(period, shard_id)
 #     assert collator_addr == eligible_collator_addr
-
 
 
 class SMCHandler:
@@ -105,7 +104,7 @@ class SMCHandler:
         if header.number != current_header.number + 1:
             raise ValueError("Fork in header chain")
 
-        self.headers_per_shard[shard_id].append(current_header)
+        self.headers_per_shard[header.shard_id].append(current_header)
 
     def get_head(self, shard_id):
         return self.headers_per_shard[shard_id][-1]
