@@ -51,17 +51,21 @@ async def collator(network, shard_id, address, smc):
 async def collate(network, shard_id, period, address, smc):
     message_queue = asyncio.Queue()
     network.outputs.append(message_queue)
+    logger.info("Listening for proposals for period {}".format(period))
 
     while smc.period < period:
         await asyncio.sleep(PERIOD_TIME / 2)
+    await asyncio.sleep(PERIOD_TIME / 2)
 
-    proposals = []
+    messages = []
     while not message_queue.empty():
-        message = await message_queue.get()
-        if isinstance(message, CollationHeader):
-            logger.info('[P: {}] In the queue, current_period: {}, message: {}'.format(period, smc.period, message))
-            if message.shard_id == shard_id and message.period == period:
-                proposals.append(message)
+        messages.append(message_queue.get_nowait())
+    proposals = [
+        message for message in messages
+        if isinstance(message, CollationHeader)
+        and message.shard_id == shard_id
+        and message.period == period
+    ]
 
     # overslept
     if smc.period != period:
@@ -70,8 +74,8 @@ async def collate(network, shard_id, period, address, smc):
 
     network.outputs.remove(message_queue)
     if proposals:
+        logger.info("[P: {}] Received {} proposals".format(period, len(proposals)))
         proposal = random.choice(proposals)
-        logger.info('[P: {}] proposals: {}, proposal: {}'.format(period, proposals, proposal))
         smc.add_header(address, proposal)
     else:
         logger.warning("[P: {}] No proposal collected".format(period))

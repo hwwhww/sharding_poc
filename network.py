@@ -34,8 +34,6 @@ async def broadcast(network):
         )
         for out in network.outputs:
             await out.put(message)
-            latency = network.latency_distribution()
-            await asyncio.sleep(latency)
 
 
 async def consumer(network, num):

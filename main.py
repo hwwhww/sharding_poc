@@ -23,5 +23,5 @@ asyncio.ensure_future(main_chain(smc))
 
 asyncio.ensure_future(collator(Network, 0, address, smc))
 for i in range(1):
-    asyncio.ensure_future(proposer(Network, 0, i, smc))	
+    asyncio.ensure_future(proposer(Network, 0, i, smc))
 loop.run_forever()
