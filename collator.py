@@ -45,11 +45,12 @@ async def collator(network, shard_id, address, smc):
                 shard_id,
             ))
 
-            coro = collate(network, shard_id, period, address, smc)
+            coro = await collate(network, shard_id, period, address, smc)
             collation_coros_and_periods.append((coro, period))
 
 
 async def collate(network, shard_id, period, address, smc):
+    logger.info('smc.period: {}, period: {}'.format(smc.period, period))
     while smc.period < period:
         asyncio.sleep(PERIOD_TIME / 5)
 
@@ -68,7 +69,7 @@ async def collate(network, shard_id, period, address, smc):
     smc.add_header(address, random.choice(proposals))
 
 
-async def collect_proposals(shard_id, period, message_queue, end_time):
+async def collect_proposals(network, shard_id, period, message_queue, end_time):
     logger.info("Collecting proposals")
     proposals = []
     while True:
@@ -84,6 +85,7 @@ async def collect_proposals(shard_id, period, message_queue, end_time):
 async def collect_proposal(shard_id, period, message_queue):
     while True:
         message = await message_queue.get()
+        logger.info('colleting proposal')
         if isinstance(message, CollationHeader):
             if message.shard_id == shard_id and message.period == period:
                 return message
