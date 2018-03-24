@@ -3,15 +3,14 @@ import logging
 import random
 import time
 
-from messages import (
-    ProposalMessage,
-)
-from smc import (
-    SMC,
+from message import (
+    CollationHeader,
 )
 
 
 PERIOD_TIME = 75.
+
+logger = logging.getLogger("collator")
 
 
 async def collator(network, shard_id, address, smc):
@@ -39,6 +38,11 @@ async def collator(network, shard_id, address, smc):
         for period in smc.get_eligible_periods(shard_id, address):
             if period in [p for _, p in collation_coros_and_periods]:
                 continue  # collation coro already running
+            logger.info("Detected eligibility of collator {} for period {} in shard {}".format(
+                address,
+                period,
+                shard_id,
+            ))
 
             coro = collate(network, shard_id, period, address, smc)
             collation_coros_and_periods.append((coro, period))
@@ -50,6 +54,7 @@ async def collate(network, shard_id, period, address, smc):
 
     # overslept
     if smc.period != period:
+        logger.warning("Missed submitting proposal".format(period))
         return
 
     end_time = time.time() + PERIOD_TIME / 2
@@ -59,10 +64,11 @@ async def collate(network, shard_id, period, address, smc):
     proposals = await collect_proposals(network, shard_id, period, message_queue, end_time)
     network.outputs.remove(message_queue)
 
-    smc.submit_proposal(random.choice(proposals))
+    smc.add_header(address, random.choice(proposals))
 
 
 async def collect_proposals(shard_id, period, message_queue, end_time):
+    logger.info("Collecting proposals")
     proposals = []
     while True:
         try:
@@ -70,13 +76,13 @@ async def collect_proposals(shard_id, period, message_queue, end_time):
             proposal = await asyncio.wait_for(coro, timeout=end_time - time.time())
             proposals.append(proposal)
         except TimeoutError:
+            logger.info("Collected {} proposals".format(len(proposals)))
             return proposals
 
 
 async def collect_proposal(shard_id, period, message_queue):
     while True:
         message = await message_queue.get()
-        if isinstance(message, ProposalMessage):
-            proposal = message.proposal
-            if proposal.shard_id == shard_id and proposal.period == period:
+        if isinstance(message, CollationHeader):
+            if message.shard_id == shard_id and message.period == period:
                 return proposal
