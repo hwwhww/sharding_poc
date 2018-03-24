@@ -3,70 +3,61 @@ import logging
 from collections import namedtuple
 import time
 
+from message import (
+    CollationHeader,
+    Collation,
+)
+from main_chain import (
+    PERIOD_TIME,
+)
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("proposer")
 
 
-Proposal = namedtuple("Proposal", [
-    "shard_id",
-    "proposer",
-    "number",
-    "period",
-])
-
-
-Collation = namedtuple("Collation", [
-    "shard_id",
-    "number",
-    "period",
-])
-
-
-class SMC:
-
-    def __init__(self, num_shards):
-        self.num_shards = num_shards
-        self.collation_headers = {
-            shard_id: [Proposal(shard_id, None, 0, 0)]
-            for shard_id in range(self.num_shards)
-        }
-        self.period = 1
-
-
-async def proposer(shard_id, address, messages_out, smc):
-    logger = logging.getLogger("proposer")
+async def proposer(network, shard_id, address, smc):
+    message_queue = asyncio.Queue()
+    network.outputs.append(message_queue)
 
     my_proposal = None
     my_collation = None
-    last_collation_header = None
+    last_period = 0
+    
     while True:
-        await asyncio.sleep(1)
+        while smc.period < last_period:
+            await asyncio.sleep(PERIOD_TIME / 5)
+        last_period = smc.period
+            
+        # if my last proposal got accepted reveal the corresponding collation
 
-        current_collation_header = smc.collation_headers[shard_id][-1]
-        if current_collation_header != last_collation_header:
-            # if my last proposal got accepted reveal the corresponding collation
-            if current_collation_header.proposer == address:
-                assert current_collation_header == my_proposal
-                assert my_collation is not None
-                logger.info("revealing body for collation #{}".format(my_collation.number))
-                await messages_out.put(("revealBody", my_collation))
+        # publish proposal for next collation
+        current_collation_header = smc.get_head(shard_id)
+        logger.info('current_collation_header: {}'.format(current_collation_header))
+        
+        my_proposal = CollationHeader(
+            shard_id,
+            address,
+            current_collation_header.number + 1,
+            smc.period
+        )
+        my_collation = Collation(
+            my_proposal,
+            "",
+        )
+        logger.info("proposing: {}".format(my_proposal))
+        await network.input.put(my_proposal)
+        latency = network.latency_distribution()
+        await asyncio.sleep(latency)
 
-            # publish proposal for next collation
-            my_proposal = Proposal(
-                shard_id,
-                address,
-                current_collation_header.number + 1,
-                smc.period
-            )
-            my_collation = Collation(
-                my_proposal.shard_id,
-                my_proposal.number,
-                my_proposal.period
-            )
-            logger.info("proposing (shard {}, period {}, number {})".format(
-                my_proposal.shard_id,
-                my_proposal.number,
-                my_proposal.period
-            ))
-            await messages_out.put(("newProposal", my_proposal))
-        last_collation_header = current_collation_header
+        asyncio.ensure_future(reveal(network, smc, my_collation))
+
+        
+
+
+async def reveal(network, smc, collation):
+    while smc.period < collation.header.period:
+        await asyncio.sleep(PERIOD_TIME / 5)
+
+    if smc.get_head(collation.header.shard_id) == collation.header:
+        logger.info("revealing: {}".format(collation))
+        await network.input.put(collation.body)

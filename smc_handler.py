@@ -1,3 +1,5 @@
+import logging
+
 from eth_utils import (
     keccak,
     int_to_big_endian,
@@ -8,6 +10,7 @@ from message import (
     create_genesis_header,
 )
 
+logger = logging.getLogger("SMC")
 
 # loog_ahead_period_length = 5
 # windback_period_length = 25
@@ -104,7 +107,10 @@ class SMCHandler:
         if header.number != current_header.number + 1:
             raise ValueError("Fork in header chain")
 
-        self.headers_per_shard[header.shard_id].append(current_header)
+        self.headers_per_shard[header.shard_id].append(header)
+        logger.info('[Added Header] {}, collator: {}'.format(header, collator))
 
     def get_head(self, shard_id):
+
+        logger.info('in get_header, self.headers_per_shard: {}'.format(self.headers_per_shard))
         return self.headers_per_shard[shard_id][-1]
