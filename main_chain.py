@@ -10,8 +10,16 @@ PERIOD_LENGTH = 5
 PERIOD_TIME = PERIOD_LENGTH * BLOCK_TIME
 
 
-async def main_chain(smc):
-    while True:
-        await asyncio.sleep(PERIOD_TIME)
-        smc.period += 1
-        logger.info('period added')
+async def wait_for_next_block():
+    await asyncio.sleep(BLOCK_TIME)  # TODO: poissonian distribution
+
+
+class MainChain:
+
+    def __init__(self):
+        self.block = 0
+
+    async def run(self):
+        while True:
+            await wait_for_next_block()
+            self.block += 1

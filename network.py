@@ -26,12 +26,12 @@ class Network:
 
 async def broadcast(network):
     while True:
-        logger.info('broadcast waiting for message')
+        # logger.info('broadcast waiting for message')
         message = await network.input.get()
-        logger.info('broadcast got message: {0}'.format(message))
-        logger.info('broadcasting to {0} consumers'.format(
-            len(network.outputs))
-        )
+        # logger.info('broadcast got message: {0}'.format(message))
+        # logger.info('broadcasting to {0} consumers'.format(
+        #     len(network.outputs))
+        # )
         for out in network.outputs:
             await out.put(message)
 
@@ -46,7 +46,7 @@ async def consumer(network, num):
         message = await my_queue.get()
         latency = network.latency_distribution()
         await asyncio.sleep(latency)
-        logger.info('consumer {0} got message {1}'.format(num, message))
+        # logger.info('consumer {0} got message {1}'.format(num, message))
 
 
 async def producer(network, num):
@@ -55,7 +55,7 @@ async def producer(network, num):
     """
     asyncio.sleep(1)
     for i in range(10):
-        logger.info('producer {0} producing message {1}'.format(num, i))
+        # logger.info('producer {0} producing message {1}'.format(num, i))
         await network.input.put('message {0} from {1}'.format(i, num))
         latency = network.latency_distribution()
         await asyncio.sleep(latency)

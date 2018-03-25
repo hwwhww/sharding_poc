@@ -19,6 +19,6 @@ def create_genesis_header(shard_id):
     return CollationHeader(
         shard_id=shard_id,
         proposer=None,
-        number=0,
-        period=0,
+        number=-1,
+        period=-1,
     )

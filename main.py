@@ -3,7 +3,10 @@ import logging
 
 from collator import collator
 from proposer import proposer
-from main_chain import main_chain
+from main_chain import (
+    MainChain,
+    PERIOD_TIME,
+)
 
 from network import (
     Network,
@@ -13,42 +16,55 @@ from network import (
 )
 from smc_handler import SMCHandler
 
-loop = asyncio.get_event_loop()
-
-asyncio.ensure_future(broadcast(Network))
-
-address = 0
-collator_pool = list(range(5))
-
-smc = SMCHandler(2, 5, collator_pool)
-asyncio.ensure_future(main_chain(smc))
-
-for i in collator_pool:
-    asyncio.ensure_future(collator(Network, i, smc))
-for i in range(5):
-    asyncio.ensure_future(proposer(Network, 0, i, smc))
-    asyncio.ensure_future(proposer(Network, 1, i+10, smc))
 
 async def stop():
-    await asyncio.sleep(20)
+    await asyncio.sleep(PERIOD_TIME * 5.5)
     loop.stop()
 
     print('--------------- SMC ---------------')
-    print('smc.headers_per_shard: {}'.format(smc.headers_per_shard))
-    print('smc.collators: {}'.format(smc.collators))
-    for shard_id in range(smc.num_shards):
+    print('smc.headers_per_shard: {}'.format(smc_handler.headers_per_shard))
+    print('smc.collators: {}'.format(smc_handler.collators))
+    for shard_id in range(smc_handler.num_shards):
         print('[shard_id]: {}'.format(shard_id))
-        
 
-        for header in smc.headers_per_shard[shard_id]:
+
+        for header in smc_handler.headers_per_shard[shard_id]:
             print('header: {}'.format(header))
             # print('[collation {}] header: {}'.format(
-            #     smc.collators[header.shard_id, header.period],
+            #     smc_handler.collators[header.shard_id, header.period],
             #     header)
             # )
 
 
-asyncio.ensure_future(stop())
+collator_pool = list(range(5))
+proposer_pool = list(range(10))
 
+main_chain = MainChain()
+smc_handler = SMCHandler(main_chain, 2, 5, collator_pool)
+
+general_coros = [
+    broadcast(Network),
+    main_chain.run(),
+    smc_handler.run(),
+    stop(),
+]
+
+collator_coros = [
+    collator(Network, address, smc_handler) for address in collator_pool
+]
+
+proposer_coros = [
+    proposer(Network, 0, address, smc_handler)
+    for address in proposer_pool[:len(proposer_pool) // 2]
+] + [
+    proposer(Network, 1, address, smc_handler)
+    for address in proposer_pool[len(proposer_pool) // 2:]
+]
+
+coros = general_coros + collator_coros + proposer_coros
+
+
+loop = asyncio.get_event_loop()
+asyncio.gather(*coros)
 loop.run_forever()
 

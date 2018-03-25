@@ -13,30 +13,24 @@ from main_chain import (
 logger = logging.getLogger("collator")
 
 
-async def collator(network, address, smc):
-    if address not in smc.collator_pool:
+async def collator(network, address, smc_handler):
+    if address not in smc_handler.collator_pool:
         raise ValueError("Collator pool in SMC does not contain the given address")
-    collation_coros_and_periods = []  # [(coroutine, period), ...]
+    collation_tasks_and_periods = []  # [(coroutine, period), ...]
 
-    last_period = None
     while True:
-        # wait for next period
-        while smc.period == last_period:
-            await asyncio.sleep(PERIOD_TIME / 2)
-        last_period = smc.period
-
-        # remove finished coroutines
-        collation_coros_and_periods = [
-            (coro, period)
-            for coro, period
-            in collation_coros_and_periods
-            if not coro.done()
+        # remove finished tasks
+        collation_tasks_and_periods = [
+            (task, period)
+            for task, period
+            in collation_tasks_and_periods
+            if not task.done()
         ]
 
         # when a new period starts, check if we're eligible for some shard and if so start to
         # collate
-        for (shard_id, period) in smc.get_eligible_periods(address):
-            if period in [p for _, p in collation_coros_and_periods]:
+        for (shard_id, period) in smc_handler.get_eligible_periods(address):
+            if period in [p for _, p in collation_tasks_and_periods]:
                 continue  # collation coro already running
             logger.info("Detected eligibility of collator {} for period {} in shard {}".format(
                 address,
@@ -44,17 +38,18 @@ async def collator(network, address, smc):
                 shard_id,
             ))
 
-            coro = asyncio.ensure_future(collate(network, shard_id, period, address, smc))
-            collation_coros_and_periods.append((coro, period))
+            task = asyncio.ensure_future(collate(network, shard_id, period, address, smc_handler))
+            collation_tasks_and_periods.append((task, period))
+
+        await smc_handler.wait_for_next_period()
 
 
-async def collate(network, shard_id, period, address, smc):
+async def collate(network, shard_id, period, address, smc_handler):
     message_queue = asyncio.Queue()
     network.outputs.append(message_queue)
     logger.info("Listening for proposals for period {}".format(period))
 
-    while smc.period < period:
-        await asyncio.sleep(PERIOD_TIME / 2)
+    await smc_handler.wait_for_period(period)
     await asyncio.sleep(PERIOD_TIME / 2)
 
     messages = []
@@ -68,14 +63,15 @@ async def collate(network, shard_id, period, address, smc):
     ]
 
     # overslept
-    if smc.period != period:
+    if smc_handler.get_current_period() > period:
         logger.warning("Missed submitting proposal".format(period))
         return
 
     network.outputs.remove(message_queue)
+
     if proposals:
-        logger.info("[P: {}] Received {} proposals".format(period, len(proposals)))
+        logger.info("Received {} proposals".format(len(proposals)))
         proposal = random.choice(proposals)
-        smc.add_header(address, proposal)
+        smc_handler.add_header(address, proposal)
     else:
-        logger.warning("[P: {}] No proposal collected".format(period))
+        logger.warning("No proposals collected".format(period))
