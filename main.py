@@ -22,18 +22,13 @@ async def stop():
     loop.stop()
 
     print('--------------- SMC ---------------')
-    print('smc.headers_per_shard: {}'.format(smc_handler.headers_per_shard))
-    print('smc.collators: {}'.format(smc_handler.collators))
-    for shard_id in range(smc_handler.num_shards):
-        print('[shard_id]: {}'.format(shard_id))
-
-
-        for header in smc_handler.headers_per_shard[shard_id]:
-            print('header: {}'.format(header))
-            # print('[collation {}] header: {}'.format(
-            #     smc_handler.collators[header.shard_id, header.period],
-            #     header)
-            # )
+    for shard_id in smc_handler.shard_ids:
+        shard = smc_handler.shards[shard_id]
+        print('-------- shard {} --------'.format(shard_id))
+        for number in range(-1, shard.best_number + 1):
+            for header in shard.headers_by_number[number]:
+                collator = smc_handler.collators.get((shard_id, header.period), None)
+                print("Header #{} collated by {}: {}".format(number, collator, header))
 
 
 collator_pool = list(range(5))
@@ -65,6 +60,8 @@ coros = general_coros + collator_coros + proposer_coros
 
 
 loop = asyncio.get_event_loop()
-asyncio.gather(*coros)
+# asyncio.gather(*coros)
+for coro in coros:
+    loop.create_task(coro)
 loop.run_forever()
 

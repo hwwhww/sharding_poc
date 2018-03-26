@@ -6,6 +6,7 @@ CollationHeader = namedtuple("CollationHeader", [
     "proposer",
     "number",
     "period",
+    "hash",
 ])
 
 
@@ -21,4 +22,5 @@ def create_genesis_header(shard_id):
         proposer=None,
         number=-1,
         period=-1,
+        hash="00" * 8,
     )

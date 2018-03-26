@@ -1,7 +1,11 @@
 import asyncio
 
 import logging
+from collections import (
+    defaultdict,
+)
 from itertools import (
+    chain,
     product,
 )
 import time
@@ -28,6 +32,42 @@ start_seed = keccak(b'\x00' * 32)
 POLLING_CYCLE = BLOCK_TIME / 5
 
 
+class Shard:
+
+    def __init__(self, smc_handler, shard_id):
+        self.smc_handler = smc_handler
+        self.shard_id = shard_id
+
+        self.headers_by_hash = {}
+        self.headers_by_number = defaultdict(list)  # header lists sorted by period (oldest first)
+        self.best_number = 0
+
+        # insert genesis
+        genesis_header = create_genesis_header(shard_id)
+        self.headers_by_hash[genesis_header.hash] = genesis_header
+        self.headers_by_number[genesis_header.number] += [genesis_header]
+        self.best_number = genesis_header.number
+
+    def add_header(self, header):
+        if header.hash in self.headers_by_hash:
+            raise ValueError("Header already added")
+        if header.shard_id != self.shard_id:
+            raise ValueError("Header belongs to different shard")
+        max_period = max(h.period for h in self.headers_by_hash.values())
+        if header.period <= max_period:
+            raise ValueError("Header period not increasing")
+
+        self.headers_by_hash[header.hash] = header
+        self.headers_by_number[header.number] += [header]
+
+        self.best_number = max(self.best_number, header.number)
+
+    def get_candidate_head_iterator(self):
+        for number in reversed(range(-1, self.best_number + 1)):
+            for header in self.headers_by_number[number]:
+                yield header
+
+
 class SMCHandler:
 
     def __init__(self, main_chain, num_shards, lookahead_period_length, collator_pool):
@@ -38,9 +78,8 @@ class SMCHandler:
         self.collator_pool = collator_pool
 
         self.collators = {}
-        self.headers_per_shard = {
-            shard_id: [create_genesis_header(shard_id)] for shard_id in range(self.num_shards)
-        }  # {shard_id: header chain, ...}
+        self.shard_ids = list(range(self.num_shards))
+        self.shards = {shard_id: Shard(self, shard_id) for shard_id in self.shard_ids}
 
         self.new_period_event = asyncio.Event()  # triggered whenever a new period starts
 
@@ -95,7 +134,7 @@ class SMCHandler:
     def get_eligible_collator(self, period, shard_id):
         if period > self.get_current_period() + self.lookahead_period_length:
             raise ValueError("Given period exceeds lookahead period")
-        if shard_id not in self.headers_per_shard.keys():
+        if shard_id not in self.shard_ids:
             raise ValueError("No shard with ID {}".format(shard_id))
 
         seed = start_seed
@@ -113,10 +152,9 @@ class SMCHandler:
 
         current_period = self.get_current_period()
         periods = range(current_period, current_period + self.lookahead_period_length + 1)
-        shard_ids = self.headers_per_shard.keys()
         shards_and_periods = [
             (shard_id, period)
-            for shard_id, period in product(shard_ids, periods)
+            for shard_id, period in product(self.shard_ids, periods)
             if collator == self.get_eligible_collator(period, shard_id)
         ]
         return shards_and_periods
@@ -127,16 +165,6 @@ class SMCHandler:
         if header.period != self.get_current_period():
             raise ValueError("Period of submitted header does not equal current period")
 
-        current_header = self.get_head(header.shard_id)
-        if header.number != current_header.number + 1:
-            raise ValueError("Fork in header chain")
-
-        self.headers_per_shard[header.shard_id].append(header)
+        self.shards[header.shard_id].add_header(header)
         self.collators[header.shard_id, header.period] = collator
         logger.info('[Added Header] {}, collator: {}'.format(header, collator))
-
-    def get_head(self, shard_id):
-        # logger.info('in get_header, self.headers_per_shard: {}'.format(
-        #     self.headers_per_shard)
-        # )
-        return self.headers_per_shard[shard_id][-1]
