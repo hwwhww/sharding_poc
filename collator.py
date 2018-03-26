@@ -16,21 +16,21 @@ logger = logging.getLogger("collator")
 async def collator(network, address, smc_handler):
     if address not in smc_handler.collator_pool:
         raise ValueError("Collator pool in SMC does not contain the given address")
-    collation_tasks_and_periods = []  # [(coroutine, period), ...]
+    # collation_tasks_and_periods = []  # [(coroutine, period), ...]
+    collation_tasks = {}
 
     while True:
         # remove finished tasks
-        collation_tasks_and_periods = [
-            (task, period)
-            for task, period
-            in collation_tasks_and_periods
+        collation_tasks = {
+            (shard_id, period): task
+            for (shard_id, period), task in collation_tasks.items()
             if not task.done()
-        ]
+        }
 
         # when a new period starts, check if we're eligible for some shard and if so start to
         # collate
         for (shard_id, period) in smc_handler.get_eligible_periods(address):
-            if period in [p for _, p in collation_tasks_and_periods]:
+            if (shard_id, period) in collation_tasks:
                 continue  # collation coro already running
             logger.info("Detected eligibility of collator {} for period {} in shard {}".format(
                 address,
@@ -39,7 +39,7 @@ async def collator(network, address, smc_handler):
             ))
 
             task = asyncio.ensure_future(collate(network, shard_id, period, address, smc_handler))
-            collation_tasks_and_periods.append((task, period))
+            collation_tasks[shard_id, period] = task
 
         await smc_handler.wait_for_next_period()
 
