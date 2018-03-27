@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 
 from collator import collator
 from proposer import proposer
@@ -17,8 +18,11 @@ from network import (
 from smc_handler import SMCHandler
 
 
+random.seed(0)
+
+
 async def stop():
-    await asyncio.sleep(PERIOD_TIME * 5.5)
+    await asyncio.sleep(PERIOD_TIME * 10.5)
     loop.stop()
 
     print('--------------- SMC ---------------')
@@ -32,7 +36,7 @@ async def stop():
 
 
 collator_pool = list(range(5))
-proposer_pool = list(range(10))
+proposer_pool = list(range(5))
 
 main_chain = MainChain()
 smc_handler = SMCHandler(main_chain, 2, 5, collator_pool)

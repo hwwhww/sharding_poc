@@ -67,6 +67,11 @@ class Shard:
             for header in self.headers_by_number[number]:
                 yield header
 
+    def get_head(self, availabilities=None):
+        head = self.get_candidate_head(availabilities)
+        if head is None:
+            raise ValueError("No available head")
+
 
 class SMCHandler:
 
@@ -82,6 +87,7 @@ class SMCHandler:
         self.shards = {shard_id: Shard(self, shard_id) for shard_id in self.shard_ids}
 
         self.new_period_event = asyncio.Event()  # triggered whenever a new period starts
+        self.new_block_event = asyncio.Event()  # triggered whenever a new block appears
 
         self._time_at_last_check = 0.0
         self._block_at_last_check = self.main_chain.block - 1
@@ -102,6 +108,8 @@ class SMCHandler:
             period_at_last_check = self._period_at_last_check
             self._period_at_last_check = self.main_chain.block // PERIOD_LENGTH
 
+            self.new_block_event.set()
+            self.new_block_event.clear()
             if self._period_at_last_check != period_at_last_check:
                 logger.info("period {} start".format(self._period_at_last_check))
                 self.new_period_event.set()
@@ -127,9 +135,24 @@ class SMCHandler:
         current_period = self.get_current_period()
         await self.wait_for_period(current_period + 1)
 
+    async def wait_for_block(self, block):
+        if block < self.get_current_block():
+            raise ValueError("Block already passed")
+
+        while self.get_current_block() < block:
+            await self.new_block_event.wait()
+
+    async def wait_for_next_block(self):
+        current_block = self.get_current_block()
+        await self.wait_for_block(current_block + 1)
+
     def get_current_period(self):
         self.check_main_chain()
         return self.main_chain.block // PERIOD_LENGTH
+
+    def get_current_block(self):
+        self.check_main_chain()
+        return self.main_chain.block
 
     def get_eligible_collator(self, period, shard_id):
         if period > self.get_current_period() + self.lookahead_period_length:

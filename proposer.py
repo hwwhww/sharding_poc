@@ -2,11 +2,18 @@ import asyncio
 import logging
 from collections import namedtuple
 import time
-from secrets import (
-    token_hex,
-)
+import random
 from cytoolz import (
     first,
+)
+
+from eth_utils import (
+    encode_hex,
+    int_to_big_endian,
+)
+
+from collator import (
+    check_availability,
 )
 
 from message import (
@@ -22,7 +29,6 @@ logger = logging.getLogger("proposer")
 
 
 async def proposer(network, shard_id, address, smc_handler):
-    await asyncio.sleep(0.1)  # give collator head start
     message_queue = asyncio.Queue()
     network.outputs.append(message_queue)
 
@@ -33,14 +39,18 @@ async def proposer(network, shard_id, address, smc_handler):
 
     while True:
         # publish proposal for next collation
-        current_collation_header = first(shard.get_candidate_head_iterator())
+        current_collation_header = next(
+            header for header in shard.get_candidate_head_iterator()
+            if check_availability(header)
+        )
 
         my_proposal = CollationHeader(
             shard_id=shard_id,
             proposer=address,
             number=current_collation_header.number + 1,
             period=smc_handler.get_current_period(),
-            hash=token_hex(4),
+            hash=encode_hex(int_to_big_endian(random.getrandbits(8 * 4)))[2:],
+            parent_hash=current_collation_header.hash,
         )
         my_collation = Collation(
             my_proposal,
