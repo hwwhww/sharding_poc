@@ -2,6 +2,9 @@ import asyncio
 import logging
 import random
 
+from network import (
+    Node,
+)
 from message import (
     CollationHeader,
 )
@@ -58,7 +61,10 @@ async def collator(network, address, smc_handler):
 
 async def collate(network, shard_id, period, address, smc_handler):
     message_queue = asyncio.Queue()
-    network.outputs.append(message_queue)
+    node = Node(network, address + ' ' + str(period))
+    network.login(node)
+    network.add_peers(node, message_queue)
+
     logger.info("Listening for proposals for period {}".format(period))
 
     shard = smc_handler.shards[shard_id]
@@ -98,8 +104,10 @@ async def collate(network, shard_id, period, address, smc_handler):
 
     # filter received proposals
     messages = []
+
     while not message_queue.empty():
         messages.append(message_queue.get_nowait())
+
     proposals = [
         message for message in messages
         if isinstance(message, CollationHeader)
@@ -113,7 +121,7 @@ async def collate(network, shard_id, period, address, smc_handler):
         logger.warning("Missed submitting proposal".format(period))
         return
 
-    network.outputs.remove(message_queue)
+    network.remove_peer(node)
 
     if proposals:
         logger.info("Submitting one of {} collected proposals".format(len(proposals)))
@@ -137,6 +145,7 @@ async def windback(network, shard, header, availability_cache):
     availabilities = {}  # {hash: available, ...} for all headers checked here
 
     for header in headers_to_check:
+        logger.info('-- windback, checking: {}'.format(header))
         if header.hash in availabilities:
             available = availability_cache[header.hash]
         else:

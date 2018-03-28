@@ -29,8 +29,9 @@ logger = logging.getLogger("proposer")
 
 
 async def proposer(network, shard_id, address, smc_handler):
-    message_queue = asyncio.Queue()
-    network.outputs.append(message_queue)
+    # message_queue = asyncio.Queue()
+    # network.nodes[address].outputs.append(message_queue)
+    node = network.find_node(address)
 
     shard = smc_handler.shards[shard_id]
 
@@ -56,19 +57,21 @@ async def proposer(network, shard_id, address, smc_handler):
             my_proposal,
             "",
         )
-        logger.info("proposing: {}".format(my_proposal))
-        await network.input.put(my_proposal)
+        logger.info("{} proposing: {}".format(address, my_proposal))
+        await node.input.put(my_proposal)
+
+        logger.info('added message {} to the queue'.format(my_proposal))
         # latency = network.latency_distribution()
         # await asyncio.sleep(latency)
-        asyncio.ensure_future(reveal(network, smc_handler, my_collation))
+        asyncio.ensure_future(reveal(network, node, smc_handler, my_collation))
 
         await smc_handler.wait_for_next_period()
 
 
-async def reveal(network, smc_handler, collation):
+async def reveal(network, node, smc_handler, collation):
     await smc_handler.wait_for_period(collation.header.period + 1)
 
     shard = smc_handler.shards[collation.header.shard_id]
     if collation.header.hash in shard.headers_by_hash:
         logger.info("revealing: {}".format(collation))
-        await network.input.put(collation.body)
+        await node.input.put(collation.body)

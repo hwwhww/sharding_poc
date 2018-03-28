@@ -23,3 +23,4 @@ class MainChain:
         while True:
             await wait_for_next_block()
             self.block += 1
+            logger.info('new block: {}'.format(self.block))
