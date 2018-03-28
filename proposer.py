@@ -66,7 +66,7 @@ async def proposer(network, shard_id, address, smc_handler):
 
 
 async def reveal(network, smc_handler, collation):
-    await smc_handler.wait_for_period(collation.header.period)
+    await smc_handler.wait_for_period(collation.header.period + 1)
 
     shard = smc_handler.shards[collation.header.shard_id]
     if collation.header.hash in shard.headers_by_hash:
