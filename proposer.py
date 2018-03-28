@@ -15,13 +15,15 @@ from eth_utils import (
 from collator import (
     check_availability,
 )
-
 from message import (
     CollationHeader,
     Collation,
 )
 from main_chain import (
     PERIOD_TIME,
+)
+from utils import (
+    receive_and_broadcast_message,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -37,6 +39,8 @@ async def proposer(network, shard_id, address, smc_handler):
     my_collation = None
 
     while True:
+        await receive_and_broadcast_message(node)
+
         # publish proposal for next collation
         current_collation_header = next(
             header for header in shard.get_candidate_head_iterator()

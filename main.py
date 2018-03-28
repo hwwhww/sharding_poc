@@ -37,7 +37,7 @@ async def stop():
 
 
 collator_pool = ['collator_{}'.format(i) for i in range(5)]
-proposer_pool = ['proposer_{}'.format(i) for i in range(5)]
+proposer_pool = ['proposer_{}'.format(i) for i in range(10)]
 
 main_chain = MainChain()
 smc_handler = SMCHandler(main_chain, 2, 5, collator_pool)

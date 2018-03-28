@@ -1,16 +1,7 @@
 import asyncio
 import logging
 import random
-
-from network import (
-    Node,
-)
-from message import (
-    CollationHeader,
-)
-from main_chain import (
-    PERIOD_TIME,
-)
+import time
 
 from cytoolz import (
     iterate,
@@ -21,6 +12,21 @@ from cytoolz import (
 from eth_utils import (
     big_endian_to_int,
     decode_hex,
+)
+
+from network import (
+    Node,
+    broadcast,
+)
+from main_chain import (
+    PERIOD_TIME,
+)
+from message import (
+    CollationHeader,
+    Collation,
+)
+from utils import (
+    receive_and_broadcast_message
 )
 
 logger = logging.getLogger("collator")
@@ -53,18 +59,22 @@ async def collator(network, address, smc_handler):
                 shard_id,
             ))
 
-            task = asyncio.ensure_future(collate(network, shard_id, period, address, smc_handler))
-            collation_tasks[shard_id, period] = task
+            message_queue = asyncio.Queue()
+            node_id = address + '_' + str(period)
+            node = Node(network, node_id, message_queue=message_queue)
+            network.login(node)
+            # TODO: disconnection
+            broadcast_task = asyncio.ensure_future(broadcast(network, node_id))
+            network.add_peers(node, message_queue, num_peers=4)
+
+            collate_task = asyncio.ensure_future(collate(network, shard_id, period, address, smc_handler, node_id))
+            collation_tasks[shard_id, period] = collate_task
 
         await smc_handler.wait_for_next_period()
 
 
-async def collate(network, shard_id, period, address, smc_handler):
-    message_queue = asyncio.Queue()
-    node = Node(network, address + ' ' + str(period))
-    network.login(node)
-    network.add_peers(node, message_queue)
-
+async def collate(network, shard_id, period, address, smc_handler, node_id):
+    node = network.find_node(node_id)
     logger.info("Listening for proposals for period {}".format(period))
 
     shard = smc_handler.shards[shard_id]
@@ -103,14 +113,12 @@ async def collate(network, shard_id, period, address, smc_handler):
         logger.info("Extend chain with head {}".format(parent_header))
 
     # filter received proposals
-    messages = []
-
-    while not message_queue.empty():
-        messages.append(message_queue.get_nowait())
+    messages = await receive_and_broadcast_message(node)
 
     proposals = [
         message for message in messages
         if isinstance(message, CollationHeader)
+        # and message.proposer == 'proposer_1'    # censor!
         and message.shard_id == shard_id
         and message.period == period
         and message.parent_hash == parent_header.hash
