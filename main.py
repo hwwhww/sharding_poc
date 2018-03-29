@@ -16,6 +16,10 @@ from network import (
 )
 from smc_handler import SMCHandler
 
+from visualization import (
+    plot_shard,
+)
+
 
 random.seed(0)
 
@@ -35,6 +39,7 @@ async def stop():
                 collator = smc_handler.collators.get((shard_id, header.period), None)
                 logger.info("Header #{} collated by {}: {}".format(number, collator, header))
 
+    # plot_shard(smc_handler.shards[0])
 
 collator_pool = ['collator_{}'.format(i) for i in range(5)]
 proposer_pool = ['proposer_{}'.format(i) for i in range(10)]
